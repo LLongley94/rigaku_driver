@@ -52,10 +52,11 @@ class RigakuCommands:
 class RigakuSimController:
     
     def __init__(self) -> None:
-        self.watch_file = "temp"
+        self.watch_file = "tmp"
         self.control_comands = ""
         self.logger = "logger.txt"
-        self.path = os.getcwd() + "\\" + self.watch_file + "\\"
+        #self.path = os.getcwd() + "\\" + self.watch_file + "\\"
+        self.path = "C:\\Xcalibur\\tmp\\listen_mode\\"
         print(self.path)
         self._last_command = ""
 
@@ -78,6 +79,11 @@ class RigakuSimController:
             f.writelines(control_command +" \r\n")
         self._last_command = control_command
 
+    def _file_saver(self, file):
+        with open(self.path + file, 'r') as r:
+            contents = r.readline()
+            print(contents)
+
     def _write_logger(self, command):
         with open(self.logger, 'a') as l: 
             log_time = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -97,18 +103,22 @@ class RigakuSimController:
                     
                 if ".error" in file:
                     print(f"An error in {self._last_command} occured")
+                    self._file_saver(file)
                     return 0
                     
                 if ".done" in file:
                     print(f"Command {self._last_command} executed")
+                    self._file_saver(file)
                     return 1
 
                 if ".stop" in file:
                     print(f"Command {self._last_command} has been stopped")
+                    self._file_saver(file)
                     return 2
 
                 if ".closed" in file:
                     print(f"CAP listen mode was closed")
+                    self._file_saver(file)
                     return 3
             
             if not _busy_flag:
@@ -172,7 +182,7 @@ class RigakuSimController:
         
         image_path = os.getcwd() + "\\" + image_folder + "\\"
 
-        command = f"{command_root} {exposure_time} {number_images} {image_path} {base_image_name}"
+        command = f"{command_root} {exposure_time} {number_images} {image_path}{base_image_name}"
         self._send_and_recieve(command, timeout)
 
 
@@ -185,30 +195,25 @@ class RigakuSimController:
     def disconnect(self):
         self._send_and_recieve(self.cmd.DISCONECT_XTALCHECK["name"])
 
-    def absolute_move(self, axis, value_mm):
-        axes = ["x", "y", "z"]
-
-        if axis not in axes:
-            print("Acceptable axes are x, y or z")
-
-        else:
-            command_root = self.cmd.ABSOLUTE_MOVE_XTALCHECK["name"]
-
-            command = f"{command_root} {axis} {value_mm}"
-            self._send_and_recieve(command)
-
-    
-    def relative_move(self, axis, value_mm):
-        axes = ["x", "y", "z"]
-
-        if axis not in axes:
-            print("No move command sent. Acceptable axes are x, y or z")
-
-        else:
+    def relative_move(self, value_x_mm = 0, value_y_mm = 0, value_z_mm = 0):
+        
             command_root = self.cmd.RELATIVE_MOVE_XTALCHECK["name"]
 
-            command = f"{command_root} {axis} {value_mm}"
+            command = f"{command_root} x y z {value_x_mm} {value_y_mm} {value_z_mm}"
+
             self._send_and_recieve(command)
+
+    def absolute_move(self, value_x_mm = None, value_y_mm = None, value_z_mm = None):
+
+        axes = [ str(axis) for axis, value in zip(['x', 'y', 'z'], [value_x_mm, value_y_mm, value_z_mm]) if value is not None ]
+
+        values = [ str(value) for value in [value_x_mm, value_y_mm, value_z_mm] if value is not None ]
+
+        command_root = self.cmd.ABSOLUTE_MOVE_XTALCHECK["name"]
+
+        command = f"{command_root} {' '.join(axes)} {' '.join(values)}"
+
+        self._send_and_recieve(command)
 
     def short_omega_scan(self, scan_folder, base_scan_name, exposure_time = 5, scan_width = 0.5, scan_range = 5):
 
