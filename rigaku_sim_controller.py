@@ -48,6 +48,10 @@ class RigakuCommands:
         "name": "dc simplescan"
     }
 
+    GONIOMETER = {
+        "name": "gt a"
+    }
+
 
 class RigakuSimController:
     
@@ -233,8 +237,33 @@ class RigakuSimController:
 
         scan_path = os.getcwd() + "\\" + scan_folder + "\\"
 
-        command = f"{command_root} {scan_path} {base_scan_name} [{exposure_time} [{scan_width}] [{scan_range}]]]"
+        command = f"{command_root} {scan_path} {base_scan_name} {exposure_time} {scan_width} {scan_range}"
         self._send_and_recieve(command,timeout)
+
+    def goniometer_absolute(self, omega=3., theta=3., kappa=-90., phi=0., distance=60.):
+        command_root = self.cmd.GONIOMETER["name"]
+
+        command = f"{command_root} {omega} {theta} {kappa} {phi} {distance}"
+        
+        self._send_and_recieve(command)
+
+    def complete_strategy(self, scan_folder, base_scan_name, exposure_time = 5, scan_width = 0.5):
+        strategy = [
+        {"theta": -20, "omega0": -21.75, "omega1": -13.25}, 
+        {"theta": -5, "omega0": -11.75, "omega1": 1.75}, 
+        {"theta": 9, "omega0": 2.25, "omega1": 15.75}, 
+        {"theta": 23, "omega0": 16.25, "omega1": 29.75}, 
+        {"theta": 37, "omega0": 30.25, "omega1": 43.75}, 
+        {"theta": 51, "omega0": 44.25, "omega1": 52.0}
+        ]
+
+        run_count = 1
+
+        for run in strategy:
+            self.goniometer_absolute(run["omega0"], run["theta"])
+            self.omega_scan(scan_folder + "_" + str(run_count), base_scan_name + "_" + str(run_count), exposure_time, scan_width, run["omega1"] - run["omega0"])
+
+
 
 
     
