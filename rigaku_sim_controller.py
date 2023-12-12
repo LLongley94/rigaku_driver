@@ -1,18 +1,23 @@
 
 import os
 import time
+import struct
 from datetime import datetime
 import math as mth
 
 
-class RigakuCommands:
+class CAPCommands:
     RESPONSE_CODES = {
-
         0: "An error occured during execution",
         1: "Command executed correctly",
         2: "CAP has stopped - no new commands can be passed",
         3: "CAP listen mode was closed",
         4: "Timeout, no response from CAP"
+    }
+
+    SWITCH_WAVELENGTH = {
+        #NOT IMPLEMENTED IN CAP
+        "name": "sw"
     }
 
     TAKE_IMAGE = {
@@ -21,7 +26,6 @@ class RigakuCommands:
 
     CONNECT_XTALCHECK = {
         "name": "xx xtalcheck connect"
-
     }
 
     INITIALIZE_XTALCHECK ={
@@ -48,8 +52,26 @@ class RigakuCommands:
         "name": "dc simplescan"
     }
 
-    GONIOMETER = {
+    STRATEGY = {
+        "name": "dc s"
+    }
+
+    GONIOMETER_MOVE = {
         "name": "gt a"
+    }
+
+    PROFFITMERGE = {
+        # NOT IMPLEMENTED IN CCD THREAD
+        "name": "xx proffitmerge"
+    }
+
+    FINALISE = {
+        #NOT IMPLEMENTED IN CAP
+        "name": "dc rrp"
+    }
+
+    INTEGRATE_POWDER = {
+        "name": "powder radial"
     }
 
 
@@ -64,7 +86,7 @@ class RigakuSimController:
         print(self.path)
         self._last_command = ""
 
-        self.cmd = RigakuCommands()
+        self.cmd = CAPCommands()
 
 
         self._init_logger()
@@ -102,11 +124,11 @@ class RigakuSimController:
             for file in dir_list:
                 
                 if ".busy" in file:
-                    print(f"Command {self._last_command} is still executing, wait time {wait} s")
+                    #print(f"Command {self._last_command} is still executing, wait time {wait} s")
                     _busy_flag = True
                     
                 if ".error" in file:
-                    print(f"An error in {self._last_command} occured")
+                    print(f"An error in {self._last_command} occurred")
                     self._file_saver(file)
                     return 0
                     
@@ -208,10 +230,9 @@ class RigakuSimController:
             self._send_and_recieve(command)
 
     def absolute_move(self, value_x_mm = None, value_y_mm = None, value_z_mm = None):
-
-        axes = [ str(axis) for axis, value in zip(['x', 'y', 'z'], [value_x_mm, value_y_mm, value_z_mm]) if value is not None ]
-
-        values = [ str(value) for value in [value_x_mm, value_y_mm, value_z_mm] if value is not None ]
+        coords = list(zip(['x', 'y', 'z'], [value_x_mm, value_y_mm, value_z_mm]))
+        axes = [ str(axis) for axis, value in coords if value is not None ]
+        values = [ str(value) for axis, value in coords if value is not None ]
 
         command_root = self.cmd.ABSOLUTE_MOVE_XTALCHECK["name"]
 
@@ -227,7 +248,7 @@ class RigakuSimController:
 
         scan_path = os.getcwd() + "\\" + scan_folder + "\\"
 
-        command = f"{command_root} {scan_path} {base_scan_name} [{exposure_time} [{scan_width}] [{scan_range}]]]"
+        command = f"{command_root} {scan_path} {base_scan_name} {exposure_time} {scan_width} {scan_range}"
         self._send_and_recieve(command,timeout)
 
     def omega_scan(self, scan_folder, base_scan_name, exposure_time = 5, scan_width = 0.5, scan_range = 90):
@@ -241,12 +262,34 @@ class RigakuSimController:
         self._send_and_recieve(command,timeout)
 
     def goniometer_absolute(self, omega=3., theta=3., kappa=-90., phi=0., distance=60.):
-        command_root = self.cmd.GONIOMETER["name"]
+        command_root = self.cmd.GONIOMETER_MOVE["name"]
 
         command = f"{command_root} {omega} {theta} {kappa} {phi} {distance}"
         
         self._send_and_recieve(command)
 
+    def complete_strategy(self, scan_folder, base_scan_name, exposure_time=1, strategy_name='data_collection_full'):
+
+        scan_path = os.getcwd() + "\\" + scan_folder
+
+        os.mkdir(scan_path)
+
+        with open(f"{strategy_name}.run", 'rb') as in_file:
+            with open(f"{scan_path}\\{base_scan_name}.run", 'wb') as out_file:
+                out_file.write(struct.pack('256s256s', base_scan_name.encode('utf-8'), scan_path.encode('utf-8')))
+                out_file.write(in_file.read()[512:])
+
+        with open(f"{strategy_name}.par", 'rb') as in_file:
+            with open(f"{scan_path}\\{base_scan_name}.par", 'wb') as out_file:
+                out_file.write(in_file.read())
+
+        command_root = self.cmd.STRATEGY["name"]
+
+        command = f"{command_root} {scan_path}\\{base_scan_name}"
+        
+        self._send_and_recieve(command, timeout = 90)
+
+    '''
     def complete_strategy(self, scan_folder, base_scan_name, exposure_time = 5, scan_width = 0.5):
         strategy = [
         {"theta": -20, "omega0": -21.75, "omega1": -13.25}, 
@@ -261,9 +304,37 @@ class RigakuSimController:
 
         for run in strategy:
             self.goniometer_absolute(run["omega0"], run["theta"])
-            self.omega_scan(scan_folder + "_" + str(run_count), base_scan_name + "_" + str(run_count), exposure_time, scan_width, run["omega1"] - run["omega0"])
-
-
-
-
+            self.omega_scan(f"{scan_folder}_{str(run_count)}", f"{base_scan_name}_{str(run_count)}", exposure_time, scan_width, run["omega1"] - run["omega0"])
+            run_count += 1
+    '''
     
+    def merge_data(self, folders_to_merge, merged_name = "merged"):
+        # CURRENTLY BROKEN AS xx proffitmerge IS A RED ONLY COMMAND
+        # NEED LISTEN MODE FOR RED THREAD
+        command_root = self.cmd.PROFFITMERGE["name"]
+
+        if len(folders_to_merge) < 2:
+            print("No folders to merge")
+        elif len(folders_to_merge) == 2:
+            command = f"{command_root} {merged_name} {folders_to_merge[0]} {folders_to_merge[1]}"
+            self._send_and_recieve(command)
+        else:
+            commands = []
+            tmp_files = []
+            i = 1
+            input_file_1 = folders_to_merge[0]
+
+            for file in folders_to_merge[1:-1]:
+                input_file_2 = file
+                output_file = f"tmp{i}"
+                tmp_files.append(output_file)
+
+                commands.append(f"{command_root} {output_file} {input_file_1} {input_file_2}")
+
+                input_file_1 = output_file
+                i += 1
+            
+            commands.append(f"{command_root} {merged_name} {input_file_1} {folders_to_merge[-1]}")
+
+            for command in commands:
+                self._send_and_recieve(command)
